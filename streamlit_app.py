@@ -5,44 +5,44 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import time
 
-def get_bse_corporate_actions():
+def get_moneycontrol_corporate_actions():
     corporate_actions = []
     
-    # BSE Corporate Actions URL
-    url = "https://www.bseindia.com/markets/MarketInfo/DispNewNoticesCirculars.aspx"
+    # MoneyControl Corporate Actions URL
+    url = "https://www.moneycontrol.com/stocks/marketinfo/upcoming_actions/home.html"
     
-    # Headers to mimic browser request
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
     }
-    
+
     try:
-        response = requests.get(url, headers=headers)
+        session = requests.Session()
+        response = session.get(url, headers=headers)
         response.raise_for_status()
         
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Find the table containing corporate actions
-        table = soup.find('table', {'id': 'ctl00_ContentPlaceHolder1_gvData'})
+        # Find all corporate action tables
+        tables = soup.find_all('table', {'class': 'b_12 dvdtbl'})
         
-        if table:
+        for table in tables:
             rows = table.find_all('tr')[1:]  # Skip header row
             
             for row in rows:
                 cols = row.find_all('td')
                 if len(cols) >= 4:
-                    date_str = cols[0].text.strip()
-                    subject = cols[1].text.strip()
-                    details = cols[2].text.strip()
-                    
                     corporate_actions.append({
-                        'Date': date_str,
-                        'Subject': subject,
-                        'Details': details
+                        'Company': cols[0].text.strip(),
+                        'Purpose': cols[1].text.strip(),
+                        'Ex-Date': cols[2].text.strip(),
+                        'Record Date': cols[3].text.strip()
                     })
         
     except Exception as e:
-        st.error(f"Error fetching BSE data: {str(e)}")
+        st.error(f"Error fetching corporate actions data: {str(e)}")
+        return pd.DataFrame()
     
     return pd.DataFrame(corporate_actions)
 
@@ -51,37 +51,34 @@ def filter_relevant_actions(df, stock_list):
     filtered_actions = []
     
     for _, row in df.iterrows():
-        subject = row['Subject'].upper()
-        details = row['Details'].upper()
+        company = row['Company'].upper()
         
         for stock in stock_list:
             stock = stock.upper()
-            if stock in subject or stock in details:
-                filtered_actions.append({
-                    'Date': row['Date'],
-                    'Stock': stock,
-                    'Subject': row['Subject'],
-                    'Details': row['Details']
-                })
+            if stock in company:
+                filtered_actions.append(row)
+                break
                 
     return pd.DataFrame(filtered_actions)
 
-def classify_action_type(subject):
+def classify_action_type(purpose):
     """Classify the type of corporate action"""
-    action_types = {
-        'SPLIT': ['SPLIT', 'SUB-DIVISION'],
-        'BONUS': ['BONUS'],
-        'DIVIDEND': ['DIVIDEND'],
-        'RIGHTS': ['RIGHTS'],
-        'MERGER': ['MERGER', 'AMALGAMATION'],
-        'NAME CHANGE': ['NAME CHANGE', 'SYMBOL CHANGE']
-    }
+    purpose = purpose.upper()
     
-    subject = subject.upper()
-    for action_type, keywords in action_types.items():
-        if any(keyword in subject for keyword in keywords):
-            return action_type
-    return 'OTHER'
+    if any(word in purpose for word in ['DIVIDEND', 'DIV']):
+        return 'DIVIDEND'
+    elif any(word in purpose for word in ['BONUS', 'BON']):
+        return 'BONUS'
+    elif any(word in purpose for word in ['SPLIT', 'SUB-DIVISION']):
+        return 'SPLIT'
+    elif any(word in purpose for word in ['RIGHTS']):
+        return 'RIGHTS'
+    elif any(word in purpose for word in ['MERGER', 'AMALGAMATION']):
+        return 'MERGER'
+    elif any(word in purpose for word in ['NAME CHANGE', 'SYMBOL']):
+        return 'NAME/SYMBOL CHANGE'
+    else:
+        return 'OTHER'
 
 def main():
     st.title("Portfolio Corporate Actions Tracker")
@@ -122,18 +119,11 @@ GRWRHITECH"""
     stocks_input = st.text_area("Enter one stock symbol per line:", value=default_stocks, height=300)
     stocks_list = [s.strip() for s in stocks_input.split('\n') if s.strip()]
     
-    # Add date range selection
-    col1, col2 = st.columns(2)
-    with col1:
-        start_date = st.date_input("Start Date", datetime.now())
-    with col2:
-        end_date = st.date_input("End Date", None)
-    
     if st.button("Fetch Corporate Actions"):
         if stocks_list:
             with st.spinner('Fetching corporate actions... This may take a few moments.'):
-                # Get all corporate actions from BSE
-                df = get_bse_corporate_actions()
+                # Get all corporate actions
+                df = get_moneycontrol_corporate_actions()
                 
                 if not df.empty:
                     # Filter actions for input stocks
@@ -141,26 +131,21 @@ GRWRHITECH"""
                     
                     if not filtered_df.empty:
                         # Add action type classification
-                        filtered_df['Action Type'] = filtered_df['Subject'].apply(classify_action_type)
+                        filtered_df['Action Type'] = filtered_df['Purpose'].apply(classify_action_type)
                         
                         # Convert dates
-                        filtered_df['Date'] = pd.to_datetime(filtered_df['Date'])
+                        for date_col in ['Ex-Date', 'Record Date']:
+                            filtered_df[date_col] = pd.to_datetime(filtered_df[date_col], format='%d-%m-%Y', errors='coerce')
                         
-                        # Filter by date range if end_date is specified
-                        if end_date:
-                            filtered_df = filtered_df[
-                                (filtered_df['Date'].dt.date >= start_date) & 
-                                (filtered_df['Date'].dt.date <= end_date)
-                            ]
-                        
-                        # Sort by date
-                        filtered_df = filtered_df.sort_values('Date')
+                        # Sort by Ex-Date
+                        filtered_df = filtered_df.sort_values('Ex-Date')
                         
                         # Reset date format for display
-                        filtered_df['Date'] = filtered_df['Date'].dt.strftime('%Y-%m-%d')
+                        for date_col in ['Ex-Date', 'Record Date']:
+                            filtered_df[date_col] = filtered_df[date_col].dt.strftime('%Y-%m-%d')
                         
                         # Reorder columns
-                        filtered_df = filtered_df[['Date', 'Stock', 'Action Type', 'Subject', 'Details']]
+                        filtered_df = filtered_df[['Company', 'Action Type', 'Purpose', 'Ex-Date', 'Record Date']]
                         
                         # Display results
                         st.subheader("Upcoming Corporate Actions")
@@ -182,7 +167,7 @@ GRWRHITECH"""
                         st.write(action_type_counts)
                         
                     else:
-                        st.warning("No corporate actions found for the given stocks in the specified date range.")
+                        st.warning("No corporate actions found for the given stocks.")
                 else:
                     st.warning("No corporate actions data available at the moment.")
         else:
