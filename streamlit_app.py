@@ -5,12 +5,12 @@ from datetime import datetime
 import yfinance as yf
 import pandas as pd
 
-st.title("🎈 My new app")
-st.write(
-    "Let's start building! For help and inspiration, head over to [docs.streamlit.io](https://docs.streamlit.io/)."
+# Move set_page_config to the top of the script
+st.set_page_config(
+    page_title="Momentum Portfolio Corporate Actions Tracker",
+    page_icon="💹",
+    layout="wide"
 )
-
-import streamlit as st
 
 class MomentumPortfolioTracker:
     @staticmethod
@@ -75,13 +75,6 @@ def load_stocks_from_csv():
         return []
 
 def main():
-    # Set page configuration
-    st.set_page_config(
-        page_title="Momentum Portfolio Corporate Actions Tracker",
-        page_icon="💹",
-        layout="wide"
-    )
-
     # Title and description
     st.title("🚀 Momentum Portfolio Corporate Actions Tracker")
     st.write("Track upcoming corporate actions for your monthly momentum portfolio.")
@@ -160,5 +153,5 @@ def main():
         "- Refresh monthly for updated portfolio"
     )
 
-if __name__ == "__main__":
-    main()
+# Directly call main() instead of using if __name__ == "__main__":
+main()
