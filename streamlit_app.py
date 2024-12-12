@@ -1,11 +1,12 @@
 import streamlit as st
 import csv
 import os
+import pytz
 from datetime import datetime
 import yfinance as yf
 import pandas as pd
 
-# Move set_page_config to the top of the script
+# Set page configuration
 st.set_page_config(
     page_title="Momentum Portfolio Corporate Actions Tracker",
     page_icon="💹",
@@ -25,23 +26,27 @@ class MomentumPortfolioTracker:
             # Using yfinance to fetch corporate actions
             ticker = yf.Ticker(f"{symbol}.NS")  # Assuming NSE listing
             
-            # Get current date
-            today = datetime.now()
+            # Get current date with timezone
+            today = pd.Timestamp.now(tz='Asia/Kolkata')
             
             # Fetch and filter upcoming actions
             upcoming_actions = {}
             
             # Check Dividends
             dividends = ticker.dividends
-            upcoming_dividends = dividends[dividends.index > today]
-            if not upcoming_dividends.empty:
-                upcoming_actions['dividend'] = upcoming_dividends.index[0].strftime('%Y-%m-%d')
+            if not dividends.empty:
+                # Filter dividends after today
+                upcoming_dividends = dividends[dividends.index > today]
+                if not upcoming_dividends.empty:
+                    upcoming_actions['dividend'] = upcoming_dividends.index[0].strftime('%Y-%m-%d')
             
             # Check Stock Splits (if supported by yfinance)
             splits = ticker.splits
-            upcoming_splits = splits[splits.index > today]
-            if not upcoming_splits.empty:
-                upcoming_actions['split'] = upcoming_splits.index[0].strftime('%Y-%m-%d')
+            if not splits.empty:
+                # Filter splits after today
+                upcoming_splits = splits[splits.index > today]
+                if not upcoming_splits.empty:
+                    upcoming_actions['split'] = upcoming_splits.index[0].strftime('%Y-%m-%d')
             
             return upcoming_actions
         except Exception as e:
@@ -153,5 +158,5 @@ def main():
         "- Refresh monthly for updated portfolio"
     )
 
-# Directly call main() instead of using if __name__ == "__main__":
+# Directly call main()
 main()
